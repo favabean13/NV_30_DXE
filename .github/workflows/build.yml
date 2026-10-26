@@ -32,10 +32,14 @@ jobs:
             libssl-dev \
             curl
 
-      - name: Clone EDK2 with submodules
+      - name: Clone EDK2 and replace the dead submodule
         run: |
-          git clone --depth 1 --branch "${EDK2_VERSION}" --recurse-submodules https://github.com/tianocore/edk2.git
+          git clone --depth 1 --branch "${EDK2_VERSION}" https://github.com/tianocore/edk2.git
           cd edk2
+
+          # Fix dead Zeex/subhook upstream by pointing at the public Tianocore mirror
+          git submodule set-url UnitTestFrameworkPkg/Library/SubhookLib/subhook https://github.com/tianocore/edk2-subhook.git
+          git submodule sync --recursive
           git submodule update --init --recursive
           git submodule status
 
