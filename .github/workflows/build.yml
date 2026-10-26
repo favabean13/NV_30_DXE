@@ -52,8 +52,13 @@ jobs:
         run: |
           mkdir -p edk2/MdeModulePkg/Universal/Ga102ReBarFix
           cp src/Ga102ReBarFix.c src/Ga102ReBarFix.inf edk2/MdeModulePkg/Universal/Ga102ReBarFix/
-          grep -q "Ga102ReBarFix.inf" edk2/MdeModulePkg/MdeModulePkg.dsc || \
-            sed -i '/^\[Components\]$/a \  MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf' \
+
+          # Ensure the module is registered in the X64 platform component list
+          grep -q '^\[Components\.X64\]$' edk2/MdeModulePkg/MdeModulePkg.dsc || \
+            printf '\n[Components.X64]\n' >> edk2/MdeModulePkg/MdeModulePkg.dsc
+
+          grep -q "MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf" edk2/MdeModulePkg/MdeModulePkg.dsc || \
+            sed -i '/^\[Components\.X64\]$/a \  MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf' \
               edk2/MdeModulePkg/MdeModulePkg.dsc
 
       - name: Build BaseTools
