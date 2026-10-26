@@ -1,4 +1,4 @@
-name: Build Ga102ReBarFix
+name: Build NvStrapsReBar GA102 20GB
 
 on:
   workflow_dispatch:
@@ -10,13 +10,17 @@ jobs:
 
     env:
       EDK2_VERSION: edk2-stable202402
+      TARGET: RELEASE
+      TARGET_ARCH: X64
+      TOOL_CHAIN_TAG: GCC5
 
     steps:
-      - name: Checkout repository
+      - name: Checkout NvStrapsReBar source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
+          path: NvStrapsReBar
 
       - name: Install build dependencies
         run: |
@@ -27,91 +31,84 @@ jobs:
             acpica-tools \
             nasm \
             python3 \
+            python3-pip \
             python3-distutils \
             git \
             libssl-dev \
             curl
+          python3 -m pip install --user pefile
 
       - name: Clone EDK2 and replace the dead submodule
         run: |
-          git clone --depth 1 --branch "${EDK2_VERSION}" https://github.com/tianocore/edk2.git
+          git clone --depth 1 --branch "${EDK2_VERSION}" https://github.com/tianocore/edk2.git edk2
           cd edk2
 
-          # Fix dead Zeex/subhook upstream by pointing at the public Tianocore mirror
+          # Fix the Subhook submodule URL used by this EDK2 revision.
           git submodule set-url UnitTestFrameworkPkg/Library/SubhookLib/subhook https://github.com/tianocore/edk2-subhook.git
           git submodule sync --recursive
           git submodule update --init --recursive
           git submodule status
+
+      - name: Locate and verify NvStrapsReBar source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          DSC_PATH="$(find NvStrapsReBar -type f -path '*/ReBarDxe/ReBar.dsc' -print -quit)"
+          test -n "$DSC_PATH"
+          DXE_DIR="${DSC_PATH%/ReBar.dsc}"
+          test -f "$DXE_DIR/ReBarDxe.inf"
+          test -f "$DXE_DIR/buildffs.py"
+          test -f "$DXE_DIR/PciConfig.c"
+          test -f "$DXE_DIR/include/PciConfig.h"
+          test -f "$DXE_DIR/ReBar.c"
+          echo "$DXE_DIR" > "$GITHUB_WORKSPACE/dxe-source-dir.txt"
+          echo "Using DXE source directory: $DXE_DIR"
+
+      - name: Add NvStrapsReBar DXE module to EDK2 tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          DXE_DIR="$(cat dxe-source-dir.txt)"
+          mkdir -p edk2/NvStrapsReBar
+          cp -a "$DXE_DIR" edk2/NvStrapsReBar/ReBarDxe
+
+          # Confirm the DSC references the expected module path.
+          grep -q 'NvStrapsReBar/ReBarDxe/ReBarDxe.inf' edk2/NvStrapsReBar/ReBarDxe/ReBar.dsc
 
       - name: Verify Brotli sources are present
         run: |
           test -f edk2/BaseTools/Source/C/BrotliCompress/brotli/c/common/constants.h
           ls -R edk2/BaseTools/Source/C/BrotliCompress | head -n 50
 
-      - name: Add module to EDK2
-        run: |
-          mkdir -p edk2/MdeModulePkg/Universal/Ga102ReBarFix
-          cp src/Ga102ReBarFix.c src/Ga102ReBarFix.inf edk2/MdeModulePkg/Universal/Ga102ReBarFix/
-
-          # Ensure ZeroMem is declared for the EDK2 UEFI build.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('edk2/MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.c')
-          text = p.read_text()
-          if '#include <Library/BaseMemoryLib.h>' not in text:
-              text = text.replace(
-                  '#include <Library/BaseLib.h>\n',
-                  '#include <Library/BaseLib.h>\n#include <Library/BaseMemoryLib.h>\n',
-                  1,
-              )
-              p.write_text(text)
-          PY
-
-          # Ensure the module is registered in the X64 platform component list
-          grep -q '^\[Components\.X64\]$' edk2/MdeModulePkg/MdeModulePkg.dsc || \
-            printf '\n[Components.X64]\n' >> edk2/MdeModulePkg/MdeModulePkg.dsc
-
-          grep -q "MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf" edk2/MdeModulePkg/MdeModulePkg.dsc || \
-            sed -i '/^\[Components\.X64\]$/a \  MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf' \
-              edk2/MdeModulePkg/MdeModulePkg.dsc
-
       - name: Build BaseTools
-        working-directory: edk2
         run: |
-          make -C BaseTools -j"$(nproc)"
-          test -f BaseTools/Source/C/bin/GenFfs
-          test -f BaseTools/Source/C/bin/VfrCompile
+          make -C edk2/BaseTools -j"$(nproc)"
+          test -f edk2/BaseTools/Source/C/bin/GenFfs
+          test -f edk2/BaseTools/Source/C/bin/GenSec
 
-      - name: Build module
+      - name: Build NvStrapsReBar and package FFS
         working-directory: edk2
+        shell: bash
         run: |
-          . edksetup.sh
-          build -p MdeModulePkg/MdeModulePkg.dsc \
-                -m MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf \
-                -a X64 -b RELEASE -t GCC5
+          set -euo pipefail
+          source ./edksetup.sh
+          python3 -m pip install --user pefile
+          export PATH="$HOME/.local/bin:$PATH"
+          python3 NvStrapsReBar/ReBarDxe/buildffs.py RELEASE B
+          test -s Build/NvStrapsReBar/RELEASE_GCC5/X64/NvStrapsReBar.ffs
+          test -s Build/NvStrapsReBar/RELEASE_GCC5/X64/NvStrapsReBar.efi
 
-      - name: Wrap into FFS
-        working-directory: edk2
+      - name: Copy build outputs
         run: |
-          BT="$PWD/BaseTools/Source/C/bin"
-          OUT="$(dirname "$(find Build -name Ga102ReBarFix.efi -path '*OUTPUT*' | head -n 1)")"
-          cd "$OUT"
-
-          "$BT/GenSec" -s EFI_SECTION_PE32 -o Ga102ReBarFix.pe32 Ga102ReBarFix.efi
-          "$BT/GenSec" -s EFI_SECTION_USER_INTERFACE -n Ga102ReBarFix -o Ga102ReBarFix.ui
-          "$BT/GenSec" -s EFI_SECTION_DXE_DEPEX -o Ga102ReBarFix.dpx Ga102ReBarFix.depex
-          "$BT/GenFfs" -t EFI_FV_FILETYPE_DRIVER \
-            -g 04BCD678-E6A6-4598-A1AA-29F99E7850C2 \
-            -o Ga102ReBarFix.ffs \
-            -i Ga102ReBarFix.dpx \
-            -i Ga102ReBarFix.pe32 \
-            -i Ga102ReBarFix.ui
-
-          mkdir -p "$GITHUB_WORKSPACE/out"
-          cp Ga102ReBarFix.ffs Ga102ReBarFix.efi "$GITHUB_WORKSPACE/out/"
+          mkdir -p out
+          cp edk2/Build/NvStrapsReBar/RELEASE_GCC5/X64/NvStrapsReBar.ffs out/
+          cp edk2/Build/NvStrapsReBar/RELEASE_GCC5/X64/NvStrapsReBar.efi out/
+          ls -lh out/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Ga102ReBarFix
+          name: NvStrapsReBar-GA102-20GB
           path: out/
+          if-no-files-found: error
+          retention-days: 14
