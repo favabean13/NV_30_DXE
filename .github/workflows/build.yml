@@ -53,6 +53,20 @@ jobs:
           mkdir -p edk2/MdeModulePkg/Universal/Ga102ReBarFix
           cp src/Ga102ReBarFix.c src/Ga102ReBarFix.inf edk2/MdeModulePkg/Universal/Ga102ReBarFix/
 
+          # Ensure ZeroMem is declared for the EDK2 UEFI build.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('edk2/MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.c')
+          text = p.read_text()
+          if '#include <Library/BaseMemoryLib.h>' not in text:
+              text = text.replace(
+                  '#include <Library/BaseLib.h>\n',
+                  '#include <Library/BaseLib.h>\n#include <Library/BaseMemoryLib.h>\n',
+                  1,
+              )
+              p.write_text(text)
+          PY
+
           # Ensure the module is registered in the X64 platform component list
           grep -q '^\[Components\.X64\]$' edk2/MdeModulePkg/MdeModulePkg.dsc || \
             printf '\n[Components.X64]\n' >> edk2/MdeModulePkg/MdeModulePkg.dsc
