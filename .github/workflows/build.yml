@@ -1,5 +1,5 @@
-# UNTESTED. Builds Ga102ReBarFix.ffs on GitHub's servers so you don't need a local EDK2 setup.
 name: Build Ga102ReBarFix
+
 on:
   workflow_dispatch:
   push:
@@ -7,45 +7,83 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
+    env:
+      EDK2_VERSION: edk2-stable202402
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: false
           fetch-depth: 0
+          submodules: recursive
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential uuid-dev acpica-tools nasm python3 git
+          sudo apt-get install -y \
+            build-essential \
+            uuid-dev \
+            acpica-tools \
+            nasm \
+            python3 \
+            python3-distutils \
+            git \
+            libssl-dev \
+            curl
 
-      - name: Get EDK2
+      - name: Clone EDK2 with submodules
         run: |
-          git clone --depth 1 --branch edk2-stable202402 https://github.com/tianocore/edk2.git
+          git clone --depth 1 --branch "${EDK2_VERSION}" --recurse-submodules https://github.com/tianocore/edk2.git
+          cd edk2
+          git submodule update --init --recursive
+          git submodule status
+
+      - name: Verify Brotli sources are present
+        run: |
+          test -f edk2/BaseTools/Source/C/BrotliCompress/brotli/c/common/constants.h
+          ls -R edk2/BaseTools/Source/C/BrotliCompress | head -n 50
 
       - name: Add module to EDK2
         run: |
           mkdir -p edk2/MdeModulePkg/Universal/Ga102ReBarFix
           cp src/Ga102ReBarFix.c src/Ga102ReBarFix.inf edk2/MdeModulePkg/Universal/Ga102ReBarFix/
-          sed -i '/^\[Components\]$/a \  MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf' edk2/MdeModulePkg/MdeModulePkg.dsc
+          grep -q "Ga102ReBarFix.inf" edk2/MdeModulePkg/MdeModulePkg.dsc || \
+            sed -i '/^\[Components\]$/a \  MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf' \
+              edk2/MdeModulePkg/MdeModulePkg.dsc
+
+      - name: Build BaseTools
+        working-directory: edk2
+        run: |
+          make -C BaseTools -j"$(nproc)"
+          test -f BaseTools/Source/C/bin/GenFfs
+          test -f BaseTools/Source/C/bin/VfrCompile
 
       - name: Build module
         working-directory: edk2
         run: |
-          make -C BaseTools -j"$(nproc)"
           . edksetup.sh
-          build -p MdeModulePkg/MdeModulePkg.dsc -m MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf -a X64 -b RELEASE -t GCC5
+          build -p MdeModulePkg/MdeModulePkg.dsc \
+                -m MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf \
+                -a X64 -b RELEASE -t GCC5
 
       - name: Wrap into FFS
         working-directory: edk2
         run: |
           BT="$PWD/BaseTools/Source/C/bin"
-          OUT="$(dirname "$(find Build -name Ga102ReBarFix.efi -path '*OUTPUT*' | head -n1)")"
+          OUT="$(dirname "$(find Build -name Ga102ReBarFix.efi -path '*OUTPUT*' | head -n 1)")"
           cd "$OUT"
+
           "$BT/GenSec" -s EFI_SECTION_PE32 -o Ga102ReBarFix.pe32 Ga102ReBarFix.efi
           "$BT/GenSec" -s EFI_SECTION_USER_INTERFACE -n Ga102ReBarFix -o Ga102ReBarFix.ui
           "$BT/GenSec" -s EFI_SECTION_DXE_DEPEX -o Ga102ReBarFix.dpx Ga102ReBarFix.depex
-          "$BT/GenFfs" -t EFI_FV_FILETYPE_DRIVER -g 04BCD678-E6A6-4598-A1AA-29F99E7850C2 -o Ga102ReBarFix.ffs -i Ga102ReBarFix.dpx -i Ga102ReBarFix.pe32 -i Ga102ReBarFix.ui
+          "$BT/GenFfs" -t EFI_FV_FILETYPE_DRIVER \
+            -g 04BCD678-E6A6-4598-A1AA-29F99E7850C2 \
+            -o Ga102ReBarFix.ffs \
+            -i Ga102ReBarFix.dpx \
+            -i Ga102ReBarFix.pe32 \
+            -i Ga102ReBarFix.ui
+
           mkdir -p "$GITHUB_WORKSPACE/out"
           cp Ga102ReBarFix.ffs Ga102ReBarFix.efi "$GITHUB_WORKSPACE/out/"
 
