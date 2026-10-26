@@ -3,11 +3,16 @@ name: Build Ga102ReBarFix
 on:
   workflow_dispatch:
   push:
+
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
 
       - name: Install build dependencies
         run: |
@@ -15,7 +20,8 @@ jobs:
           sudo apt-get install -y build-essential uuid-dev acpica-tools nasm python3 git
 
       - name: Get EDK2
-        run: git clone --depth 1 --branch edk2-stable202402 --recurse-submodules --shallow-submodules https://github.com/tianocore/edk2.git
+        run: |
+          git clone --depth 1 --branch edk2-stable202402 https://github.com/tianocore/edk2.git
 
       - name: Add module to EDK2
         run: |
@@ -43,7 +49,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           cp Ga102ReBarFix.ffs Ga102ReBarFix.efi "$GITHUB_WORKSPACE/out/"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: Ga102ReBarFix
           path: out/
