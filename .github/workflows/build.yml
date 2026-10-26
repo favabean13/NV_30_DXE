@@ -1,4 +1,4 @@
-Build Ga102ReBarFix
+name: Build Ga102ReBarFix
 
 on:
   workflow_dispatch:
