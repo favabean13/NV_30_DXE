@@ -90,6 +90,25 @@ jobs:
                 -m MdeModulePkg/Universal/Ga102ReBarFix/Ga102ReBarFix.inf \
                 -a X64 -b RELEASE -t GCC5
 
+      - name: Set NX_COMPAT flag on the image
+        working-directory: edk2
+        run: |
+          python3 - <<'PY'
+          import glob, struct
+          paths = [f for f in glob.glob('Build/**/Ga102ReBarFix.efi', recursive=True) if '/OUTPUT/' in f]
+          assert len(paths) == 1, paths
+          path = paths[0]
+          data = bytearray(open(path, 'rb').read())
+          assert data[:2] == b'MZ'
+          pe = struct.unpack_from('<I', data, 0x3c)[0]
+          assert data[pe:pe + 4] == b'PE\0\0'
+          off = pe + 24 + 0x46   # DllCharacteristics (same offset for PE32 and PE32+)
+          before = struct.unpack_from('<H', data, off)[0]
+          struct.pack_into('<H', data, off, before | 0x0100)   # IMAGE_DLLCHARACTERISTICS_NX_COMPAT
+          open(path, 'wb').write(data)
+          print('DllCharacteristics 0x%04X -> 0x%04X' % (before, before | 0x0100))
+          PY
+
       - name: Wrap into FFS
         working-directory: edk2
         run: |
