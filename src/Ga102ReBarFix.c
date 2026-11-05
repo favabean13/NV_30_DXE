@@ -1,5 +1,5 @@
 /** @file
-  Ga102ReBarFix v0.2 - self-contained Resizable BAR enabler for the memory-modded
+  Ga102ReBarFix v0.4 (S3 resume support) - self-contained Resizable BAR enabler for the memory-modded
   RTX 3080 20GB (10de:2206). Does NOT need NvStrapsReBar.
 
   What it does, for each matching GPU, during PCI enumeration:
@@ -9,7 +9,9 @@
     3. Walk the PCIe extended capability list, find the Resizable BAR capability, and
        program the size field of the BAR1 entry to the largest advertised size that is
        <= the wanted size (default 32 GiB, optional NVRAM override).
-    4. Publish a small status record (variable "Ga102ReBarFixStatus", RAM only) so the
+    4. Record masked PCI configuration read/modify/write operations for 0x610 and the BAR1
+       size-control register in the S3 boot script, when the platform exposes S3 Save State.
+    5. Publish a small status record (variable "Ga102ReBarFixStatus", RAM only) so the
        result can be read from Windows (see Read-Ga102Status.ps1).
 
   Hook point: like ReBarDxe, it replaces PreprocessController() of
@@ -34,6 +36,8 @@
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Protocol/PciHostBridgeResourceAllocation.h>
 #include <Protocol/PciRootBridgeIo.h>
+#include <Protocol/S3SaveState.h>
+#include <Pi/PiS3BootScript.h>
 
 //
 // ---- Card identification ---------------------------------------------------
@@ -90,7 +94,7 @@ STATIC CONST GPU_ID  mTargets[] = {
 #pragma pack(1)
 typedef struct {
   UINT32  Signature;        // 'G2RB'
-  UINT8   Version;          // 2
+  UINT8   Version;          // 3
   UINT8   Bus;
   UINT8   Device;
   UINT8   Function;
@@ -102,6 +106,7 @@ typedef struct {
   UINT8   SizeWanted;
   UINT8   SizeAfter;        // size index read back after writing
   UINT8   Result;           // RESULT_*
+  UINT8   S3Entries;        // number of S3 boot-script entries recorded (0 = none/unavailable)
 } STATUS_RECORD;
 #pragma pack()
 
@@ -127,6 +132,76 @@ typedef struct {
 
 STATIC HOOK_ENTRY  mHooks[MAX_HOST_BRIDGES];
 STATIC UINTN       mHookCount = 0;
+
+//
+// ---- S3 (sleep/resume) boot-script recording -------------------------------
+// Record two masked PCI config operations for S3 replay. The records are appended in this
+// order: GA102 framebuffer override, then BAR1 ReBAR size selector. The platform must expose
+// EFI_S3_SAVE_STATE_PROTOCOL and execute these script records for S3 restoration to occur.
+// This source does not assume or guarantee ordering relative to other firmware script writers.
+//
+STATIC EFI_S3_SAVE_STATE_PROTOCOL  *mS3Save = NULL;
+// This driver targets one exact GPU. Keep script entries unique for this boot.
+STATIC BOOLEAN                     mS3FbRecorded = FALSE;
+STATIC BOOLEAN                     mS3RebarRecorded = FALSE;
+
+STATIC
+BOOLEAN
+S3Available (
+  VOID
+  )
+{
+  if (mS3Save == NULL) {
+    if (EFI_ERROR (gBS->LocateProtocol (&gEfiS3SaveStateProtocolGuid, NULL, (VOID **)&mS3Save))) {
+      mS3Save = NULL;
+    }
+  }
+
+  return (BOOLEAN)(mS3Save != NULL);
+}
+
+STATIC
+BOOLEAN
+S3RecordCfgRmw32 (
+  IN UINT32  Segment,
+  IN UINT8   Bus,
+  IN UINT8   Dev,
+  IN UINT8   Func,
+  IN UINT32  Reg,
+  IN UINT32  Data,
+  IN UINT32  DataMask
+  )
+{
+  UINT64  Address;
+
+  if ((Segment > 0xFFFF) || !S3Available ()) {
+    return FALSE;
+  }
+
+  Address = EFI_PCI_ADDRESS (Bus, Dev, Func, Reg);
+  return (BOOLEAN)!EFI_ERROR (
+                     mS3Save->Write (
+                                mS3Save,
+                                EFI_BOOT_SCRIPT_PCI_CONFIG2_READ_WRITE_OPCODE,
+                                EfiBootScriptWidthUint32,
+                                (UINT16)Segment,
+                                Address,
+                                &Data,
+                                &DataMask
+                                )
+                     );
+}
+
+STATIC
+VOID
+S3RecordStall (
+  IN UINTN  Microseconds
+  )
+{
+  if (S3Available ()) {
+    mS3Save->Write (mS3Save, EFI_BOOT_SCRIPT_STALL_OPCODE, Microseconds);
+  }
+}
 
 STATIC
 EFI_STATUS
@@ -308,7 +383,7 @@ EnableLargeBar (
 
   ZeroMem (&Rec, sizeof (Rec));
   Rec.Signature = SIGNATURE_32 ('G', '2', 'R', 'B');
-  Rec.Version   = 2;
+  Rec.Version   = 3;
   Rec.Bus       = Bus;
   Rec.Device    = Dev;
   Rec.Function  = Func;
@@ -346,6 +421,19 @@ EnableLargeBar (
 
   if (!DoResize) {
     return;   // endpoints reach us in EfiPciBeforeResourceCollection; resize only there
+  }
+
+  // Record the framebuffer override once, immediately before recording the BAR1 selector.
+  // Config2 RMW preserves unrelated bits in the register during S3 replay.
+  if (!mS3FbRecorded && ((FbAfter & FB_OVERRIDE_MASK) == FB_OVERRIDE_VALUE)) {
+    if (S3RecordCfgRmw32 (
+          Rb->SegmentNumber, Bus, Dev, Func, FB_SIZE_OVERRIDE,
+          FB_OVERRIDE_VALUE, ~FB_OVERRIDE_MASK))
+    {
+      mS3FbRecorded = TRUE;
+      Rec.S3Entries++;
+      S3RecordStall (1000);
+    }
   }
 
   //
@@ -405,6 +493,14 @@ EnableLargeBar (
     if (Rec.SizeBefore == (UINT8)Best) {
       Rec.SizeAfter = Rec.SizeBefore;
       Rec.Result    = RESULT_ALREADY;
+      if (!mS3RebarRecorded && S3RecordCfgRmw32 (
+            Rb->SegmentNumber, Bus, Dev, Func, Cap + 8 + 8 * Index,
+            (UINT32)Best << REBAR_CTRL_SZ_SHIFT, ~REBAR_CTRL_SZ_MASK))
+      {
+        mS3RebarRecorded = TRUE;
+        Rec.S3Entries++;
+      }
+
       break;
     }
 
@@ -416,14 +512,23 @@ EnableLargeBar (
     }
 
     Rec.Result = (Rec.SizeAfter == (UINT8)Best) ? RESULT_RESIZED : RESULT_ACCESS_ERROR;
+    if ((Rec.Result == RESULT_RESIZED) && !mS3RebarRecorded &&
+        S3RecordCfgRmw32 (
+          Rb->SegmentNumber, Bus, Dev, Func, Cap + 8 + 8 * Index,
+          (UINT32)Best << REBAR_CTRL_SZ_SHIFT, ~REBAR_CTRL_SZ_MASK))
+    {
+      mS3RebarRecorded = TRUE;
+      Rec.S3Entries++;
+    }
+
     break;
   }
 
   DEBUG ((
     DEBUG_INFO,
-    "Ga102ReBarFix: %02x:%02x.%x 0x610 %08x->%08x cap@%x mask %08x size %d->%d (want %d) result %d\n",
+    "Ga102ReBarFix: %02x:%02x.%x 0x610 %08x->%08x cap@%x mask %08x size %d->%d (want %d) result %d S3 %d\n",
     Bus, Dev, Func, Rec.Fb610Before, Rec.Fb610After, Rec.RebarCapOffset,
-    Rec.SupportedMask, Rec.SizeBefore, Rec.SizeAfter, Rec.SizeWanted, Rec.Result
+    Rec.SupportedMask, Rec.SizeBefore, Rec.SizeAfter, Rec.SizeWanted, Rec.Result, Rec.S3Entries
     ));
   PublishStatus (&Rec);
 }
