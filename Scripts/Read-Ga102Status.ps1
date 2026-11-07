@@ -48,3 +48,8 @@ $sz = { param($i) if ($i -le 19) { "{0} MiB" -f ([math]::Pow(2,$i)) } else { "?"
 "Result         : {0} ({1})" -f $buf[27], $results[[int]$buf[27]]
 if ($n -ge 5)  { "Record version  : {0}" -f $buf[4] }
 if ($n -ge 29) { "S3 entries     : {0} (S3 boot-script records made; 0 = S3 save-state protocol unavailable or nothing to record)" -f $buf[28] }
+if ($n -ge 33) {
+  if ($buf[29] -gt 0) { "Upstream bridge: {0:x2}:{1:x2}.{2}  ({3} bridge(s) between the root bus and the GPU)" -f $buf[30], $buf[31], $buf[32], $buf[29] }
+  else { "Upstream bridge: none found (GPU on a root bus, or bridge scan failed)" }
+  "  v0.5 expected S3 entries = bridges + 2 (e.g. 3 for a GPU directly on a CPU root port)"
+}
