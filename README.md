@@ -429,8 +429,7 @@ Flashing a modified BIOS is risky. You do it entirely at your own risk, and you'
 having a working backup and a recovery method.
 
 **Not maintained.** This project is published as is and **will not be maintained, updated or
-supported**. Issues, pull requests and support requests may not get a response, and there won't be
-fixes for other boards, cards, drivers or Windows versions.
+supported**.
 
 **Forks and reuse are welcome.** Anyone may modify, fork, extend or integrate this project into their
 own work for their own use cases, including commercial use, under the terms of the MIT license, as long
