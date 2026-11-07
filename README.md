@@ -2,6 +2,8 @@
 
 **Resizable BAR for the memory-modded RTX 3080 20GB on Windows, including sleep and resume.**
 
+Confirmed, working with GPU_UNLOCKER: https://github.com/physicsdolphin/nv-uefi-unlocker
+
 Ga102ReBarFix is a small UEFI firmware module (a DXE driver) that you insert into your motherboard's
 BIOS image. On every boot it unlocks the full 32 GiB BAR1 on the RTX 3080 20GB (PCI ID `10DE:2206`,
 subsystem `10DE:146D`). Windows and the NVIDIA driver then see Resizable BAR as active, and the CPU can
