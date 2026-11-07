@@ -1,6 +1,11 @@
 /** @file
-  Ga102ReBarFix v0.4 (S3 resume support) - self-contained Resizable BAR enabler for the memory-modded
+  Ga102ReBarFix v0.5 (S3 resume support) - self-contained Resizable BAR enabler for the memory-modded
   RTX 3080 20GB (10de:2206). Does NOT need NvStrapsReBar.
+
+  v0.5: before the GPU's S3 entries, the bus-number register (0x18) of every bridge between the root
+  bus and the GPU is restored, followed by a 100 ms stall. After S3 the root port wakes with its bus
+  numbers cleared, so config writes to the GPU's bus would otherwise be dropped silently. This is
+  the same ordering NvStrapsReBar uses in its S3 script (pciSaveAndRemapBridgeConfig).
 
   What it does, for each matching GPU, during PCI enumeration:
     1. Identify the card (vendor 10DE, display class, device ID + subsystem from a table).
@@ -31,6 +36,7 @@
 
 #include <Uefi.h>
 #include <Library/BaseLib.h>
+#include <Library/BaseMemoryLib.h>
 #include <Library/DebugLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
@@ -94,7 +100,7 @@ STATIC CONST GPU_ID  mTargets[] = {
 #pragma pack(1)
 typedef struct {
   UINT32  Signature;        // 'G2RB'
-  UINT8   Version;          // 3
+  UINT8   Version;          // 5
   UINT8   Bus;
   UINT8   Device;
   UINT8   Function;
@@ -107,6 +113,10 @@ typedef struct {
   UINT8   SizeAfter;        // size index read back after writing
   UINT8   Result;           // RESULT_*
   UINT8   S3Entries;        // number of S3 boot-script entries recorded (0 = none/unavailable)
+  UINT8   BridgeCount;      // bridges found between the root bus and the GPU (0 = none found)
+  UINT8   BridgeBus;        // the GPU's immediate upstream bridge (valid when BridgeCount > 0)
+  UINT8   BridgeDevice;
+  UINT8   BridgeFunction;
 } STATUS_RECORD;
 #pragma pack()
 
@@ -144,6 +154,22 @@ STATIC EFI_S3_SAVE_STATE_PROTOCOL  *mS3Save = NULL;
 // This driver targets one exact GPU. Keep script entries unique for this boot.
 STATIC BOOLEAN                     mS3FbRecorded = FALSE;
 STATIC BOOLEAN                     mS3RebarRecorded = FALSE;
+STATIC BOOLEAN                     mS3BridgeRecorded = FALSE;
+
+//
+// Bridges between the root bus and the GPU. Index 0 is the GPU's immediate upstream bridge.
+//
+#define MAX_BRIDGE_DEPTH        4
+#define PCI_BUS_NUMBER_REG      0x18          // primary / secondary / subordinate / sec. latency
+#define BRIDGE_BUS_KEEP_MASK    0xFF000000    // S3 RMW: keep the secondary latency timer byte
+#define S3_LINK_READY_STALL_US  100000        // 100 ms: PCIe readiness time before config writes
+
+typedef struct {
+  UINT8   Bus;
+  UINT8   Device;
+  UINT8   Function;
+  UINT32  BusNumbers;                         // value of config dword 0x18 at boot
+} BRIDGE_LOC;
 
 STATIC
 BOOLEAN
@@ -316,6 +342,90 @@ FindRebarCap (
 }
 
 /**
+  Find the PCI-to-PCI bridge (type 1 header) whose secondary bus is ChildBus.
+  Bridges always sit on a lower bus number than their secondary bus, so only buses below
+  ChildBus are scanned. Returns FALSE when ChildBus is a root bus (no bridge above it).
+**/
+STATIC
+BOOLEAN
+FindBridgeFor (
+  IN  EFI_PCI_ROOT_BRIDGE_IO_PROTOCOL  *Rb,
+  IN  UINT8                            ChildBus,
+  OUT BRIDGE_LOC                       *Loc
+  )
+{
+  UINT32  Bus;
+  UINT8   Dev;
+  UINT8   Func;
+  UINT32  Id;
+  UINT32  HdrDword;
+  UINT32  BusNumbers;
+  UINT8   MaxFunc;
+
+  for (Bus = 0; Bus < ChildBus; Bus++) {
+    for (Dev = 0; Dev < 32; Dev++) {
+      MaxFunc = 1;
+      for (Func = 0; Func < MaxFunc; Func++) {
+        if (EFI_ERROR (CfgRead32 (Rb, (UINT8)Bus, Dev, Func, 0x00, &Id)) || ((Id & 0xFFFF) == 0xFFFF) || ((Id & 0xFFFF) == 0)) {
+          continue;
+        }
+
+        if (EFI_ERROR (CfgRead32 (Rb, (UINT8)Bus, Dev, Func, 0x0C, &HdrDword))) {
+          continue;
+        }
+
+        if ((Func == 0) && ((HdrDword & 0x00800000) != 0)) {
+          MaxFunc = 8;                    // multi-function device: look at functions 1..7 too
+        }
+
+        if (((HdrDword >> 16) & 0x7F) != 0x01) {
+          continue;                       // not a PCI-to-PCI bridge
+        }
+
+        if (EFI_ERROR (CfgRead32 (Rb, (UINT8)Bus, Dev, Func, PCI_BUS_NUMBER_REG, &BusNumbers))) {
+          continue;
+        }
+
+        if ((UINT8)(BusNumbers >> 8) == ChildBus) {
+          Loc->Bus        = (UINT8)Bus;
+          Loc->Device     = Dev;
+          Loc->Function   = Func;
+          Loc->BusNumbers = BusNumbers;
+          return TRUE;
+        }
+      }
+    }
+  }
+
+  return FALSE;
+}
+
+/**
+  Fill Chain[] with the bridges between the root bus and GpuBus, immediate upstream bridge first.
+  Returns the number found (0 if the GPU sits directly on a root bus).
+**/
+STATIC
+UINTN
+FindBridgeChain (
+  IN  EFI_PCI_ROOT_BRIDGE_IO_PROTOCOL  *Rb,
+  IN  UINT8                            GpuBus,
+  OUT BRIDGE_LOC                       Chain[MAX_BRIDGE_DEPTH]
+  )
+{
+  UINTN  Count;
+  UINT8  Bus;
+
+  Count = 0;
+  Bus   = GpuBus;
+  while ((Count < MAX_BRIDGE_DEPTH) && (Bus != 0) && FindBridgeFor (Rb, Bus, &Chain[Count])) {
+    Bus = Chain[Count].Bus;
+    Count++;
+  }
+
+  return Count;
+}
+
+/**
   Wanted size index: optional NVRAM variable "Ga102ReBarSize" (UINT8) or the default.
 **/
 STATIC
@@ -380,10 +490,13 @@ EnableLargeBar (
   INTN           Best;
   INTN           N;
   UINT8          Wanted;
+  BRIDGE_LOC     Chain[MAX_BRIDGE_DEPTH];
+  UINTN          Bridges;
+  INTN           B;
 
   ZeroMem (&Rec, sizeof (Rec));
   Rec.Signature = SIGNATURE_32 ('G', '2', 'R', 'B');
-  Rec.Version   = 3;
+  Rec.Version   = 5;
   Rec.Bus       = Bus;
   Rec.Device    = Dev;
   Rec.Function  = Func;
@@ -423,8 +536,38 @@ EnableLargeBar (
     return;   // endpoints reach us in EfiPciBeforeResourceCollection; resize only there
   }
 
-  // Record the framebuffer override once, immediately before recording the BAR1 selector.
-  // Config2 RMW preserves unrelated bits in the register during S3 replay.
+  //
+  // S3 step 1 (v0.5): make the GPU reachable again before writing to it. On resume the bridges above
+  // the GPU wake with bus numbers cleared, and config writes to the GPU's bus are dropped silently.
+  // Restore each bridge's primary/secondary/subordinate bus numbers, root side first, keeping the
+  // secondary latency timer byte, then wait for the link and the GPU to accept config requests.
+  //
+  Bridges = FindBridgeChain (Rb, Bus, Chain);
+  Rec.BridgeCount = (UINT8)Bridges;
+  if (Bridges > 0) {
+    Rec.BridgeBus      = Chain[0].Bus;
+    Rec.BridgeDevice   = Chain[0].Device;
+    Rec.BridgeFunction = Chain[0].Function;
+  }
+
+  if (!mS3BridgeRecorded && (Bridges > 0) && S3Available ()) {
+    for (B = (INTN)Bridges - 1; B >= 0; B--) {
+      if (S3RecordCfgRmw32 (
+            Rb->SegmentNumber, Chain[B].Bus, Chain[B].Device, Chain[B].Function, PCI_BUS_NUMBER_REG,
+            Chain[B].BusNumbers & ~BRIDGE_BUS_KEEP_MASK, BRIDGE_BUS_KEEP_MASK))
+      {
+        Rec.S3Entries++;
+      }
+    }
+
+    S3RecordStall (S3_LINK_READY_STALL_US);
+    mS3BridgeRecorded = TRUE;
+  }
+
+  //
+  // S3 step 2: the framebuffer override, then (below) the BAR1 size selector.
+  // Config2 RMW preserves unrelated bits in each register during S3 replay.
+  //
   if (!mS3FbRecorded && ((FbAfter & FB_OVERRIDE_MASK) == FB_OVERRIDE_VALUE)) {
     if (S3RecordCfgRmw32 (
           Rb->SegmentNumber, Bus, Dev, Func, FB_SIZE_OVERRIDE,
