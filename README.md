@@ -1,4 +1,4 @@
-# Ga102ReBarFix AKA NV_30_DXE
+# Ga102ReBarFix
 
 **Resizable BAR for the memory-modded RTX 3080 20GB on Windows, including sleep and resume.**
 
@@ -9,6 +9,12 @@ reach all of the card's VRAM instead of a 256 MiB window. From v0.5 it also rest
 **S3 sleep**, so waking from sleep works.
 
 You don't need to modify the card's VBIOS, patch the NVIDIA driver, run Linux, or change the registry.
+
+> [!WARNING]
+> **Use at your own risk.** This project modifies motherboard firmware. The author is **not
+> responsible for any damage** to hardware, firmware, software or data resulting from its use, including
+> a board that won't boot. The project is provided **as is** and is **not maintained or updated**.
+> See [Disclaimer and project status](#12-disclaimer-and-project-status).
 
 ---
 
@@ -25,6 +31,7 @@ You don't need to modify the card's VBIOS, patch the NVIDIA driver, run Linux, o
 9. [Version history](#9-version-history)
 10. [Credits and code provenance](#10-credits-and-code-provenance)
 11. [License](#11-license)
+12. [Disclaimer and project status](#12-disclaimer-and-project-status)
 
 ---
 
@@ -72,7 +79,8 @@ treat it like any Resizable BAR card.
 | `RMForceStaticBar1` registry key | Not needed. Results were identical with the key set to `0` and with it absent. |
 
 This has been tested on one motherboard and one card. Other boards may handle PCIe state on resume
-differently. Reports from other systems are welcome.
+differently. The project isn't maintained, so results from other systems are best shared in your own
+forks or write-ups.
 
 ---
 
@@ -385,5 +393,27 @@ copyright notice **and the credits in it** are kept. That credits the author of 
 authors listed above. Binary redistributions must also include the TianoCore EDK II notice found in
 `LICENSE`.
 
-*This project is not affiliated with or endorsed by NVIDIA, MSI or any of the credited authors.
-Modifying firmware is at your own risk.*
+---
+
+## 12. Disclaimer and project status
+
+**No liability.** This software is provided "as is", without warranty of any kind, as stated in the
+MIT license. The author is **not responsible for any damage or loss** arising from using, building,
+flashing or modifying this project, including:
+- damaged or unbootable motherboards, BIOS chips or GPUs,
+- corrupted firmware, data loss, instability or crashes,
+- voided warranties.
+
+Flashing a modified BIOS is risky. You do it entirely at your own risk, and you're responsible for
+having a working backup and a recovery method.
+
+**Not maintained.** This project is published as is and **will not be maintained, updated or
+supported**. Issues, pull requests and support requests may not get a response, and there won't be
+fixes for other boards, cards, drivers or Windows versions.
+
+**Forks and reuse are welcome.** Anyone may modify, fork, extend or integrate this project into their
+own work for their own use cases, including commercial use, under the terms of the MIT license, as long
+as the credits in `LICENSE` are kept. If you adapt it to other cards or boards, please publish your
+changes so others can benefit.
+
+*This project is not affiliated with or endorsed by NVIDIA, MSI or any of the credited authors.*
