@@ -13,7 +13,7 @@ You don't need to modify the card's VBIOS, patch the NVIDIA driver, run Linux, o
 > [!WARNING]
 > **Use at your own risk.** This project modifies motherboard firmware. The author is **not
 > responsible for any damage** to hardware, firmware, software or data resulting from its use, including
-> a board that won't boot. The project is provided **as is** and is **not maintained or updated**.
+> a board that won't boot or any subsequent unforeseen damages associated with this project. The project is provided **as is** and is **not maintained or updated**.
 > See [Disclaimer and project status](#12-disclaimer-and-project-status).
 
 ---
