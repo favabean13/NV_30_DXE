@@ -2,7 +2,7 @@
 #  Ga102ReBarFix - applies the GA102 frame-buffer size override on the
 #  memory-modded RTX 3080 20GB during PCI enumeration. See Ga102ReBarFix.c.
 #
-#  UNTESTED. MIT licence. v0.4 (self-contained, with masked S3 resume recording).
+#  UNTESTED. MIT licence. v0.5 (self-contained, masked S3 resume recording with bridge bus restore).
 ##
 
 [Defines]
@@ -10,7 +10,7 @@
   BASE_NAME                      = Ga102ReBarFix
   FILE_GUID                      = 04BCD678-E6A6-4598-A1AA-29F99E7850C2
   MODULE_TYPE                    = DXE_DRIVER
-  VERSION_STRING                 = 0.4
+  VERSION_STRING                 = 0.5
   ENTRY_POINT                    = Ga102ReBarFixEntry
 
 [Sources]
@@ -24,6 +24,7 @@
   UefiDriverEntryPoint
   UefiBootServicesTableLib
   BaseLib
+  BaseMemoryLib
   UefiRuntimeServicesTableLib
   DebugLib
 
