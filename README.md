@@ -397,7 +397,7 @@ used from each:
 | **[3080-20gb-rebar](https://github.com/noon-at-cgn/3080-20gb-rebar)**, **[geforce-bar1-resize](https://github.com/noon-at-cgn/geforce-bar1-resize)**, **[geforce-dynbar1-p2p](https://github.com/noon-at-cgn/geforce-dynbar1-p2p)** by **[noon-at-cgn](https://github.com/noon-at-cgn)** | see their repositories | The discovery and documentation of the GA102 `0x610` frame-buffer size override, its value and mask (`0xC80`/`0xF80`), the expected register values for this card, and the background on static vs. dynamic BAR1. | **No.** Those are shell scripts for Linux. This project reimplements the same register write in C for UEFI. |
 | **[NvStrapsReBar](https://github.com/terminatorul/NvStrapsReBar)** by **[Timothy Madden (@terminatorul)](https://github.com/terminatorul)** | MIT | The S3 approach: record a restore of the upstream bridge's bus numbers (masked, keeping the top byte) *before* writing to the GPU (its `pciSaveAndRemapBridgeConfig`). Also the general use of `EFI_S3_SAVE_STATE_PROTOCOL` and of a status UEFI variable. | **No.** The technique was studied in its source and written independently. The register, value layout and mask are the same because they're defined by the PCI specification. |
 | **[ReBarUEFI](https://github.com/xCuri0/ReBarUEFI)** by **[xCuri0](https://github.com/xCuri0)** | MIT | The technique of hooking `PreprocessController` on `EFI_PCI_HOST_BRIDGE_RESOURCE_ALLOCATION_PROTOCOL` to resize BARs before resource collection, and the FFS-insertion procedure from its wiki. | **No.** The hook was written independently. Its structure is similar because it uses the same standard EDK II interfaces. |
-| **[TianoCore EDK II](https://github.com/tianocore/edk2)** by **TianoCore and contributors** | BSD-2-Clause-Patent | Headers, libraries and build tools. | **Yes, in the compiled binary.** `Ga102ReBarFix.ffs`/`.efi` statically links EDK II library code (UefiDriverEntryPoint, BaseLib, BaseMemoryLib, UefiBootServicesTableLib, UefiRuntimeServicesTableLib, DebugLib). Its license notice is included in `LICENSE` and must accompany binary redistributions. |
+| **[TianoCore EDK II](https://github.com/tianocore/edk2)** by **TianoCore and contributors** | BSD-2-Clause-Patent | Headers, libraries and build tools. | **Yes, in the compiled binary.** `Ga102ReBarFix.ffs`/`.efi` statically links EDK II library code (UefiDriverEntryPoint, BaseLib, BaseMemoryLib, UefiBootServicesTableLib, UefiRuntimeServicesTableLib, DebugLib). Its license notice is in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) and must accompany binary redistributions. |
 
 **Development note:** parts of the source code and the PowerShell tools were drafted with AI
 assistance (Anthropic Claude and OpenAI ChatGPT). They were reviewed, built and tested on real hardware
@@ -412,7 +412,7 @@ by the author.
 You may use, modify, fork, sell and redistribute this project, in source or binary form, as long as the
 copyright notice **and the credits in it** are kept. That credits the author of this project and the
 authors listed above. Binary redistributions must also include the TianoCore EDK II notice found in
-`LICENSE`.
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 ---
 
@@ -434,7 +434,7 @@ fixes for other boards, cards, drivers or Windows versions.
 
 **Forks and reuse are welcome.** Anyone may modify, fork, extend or integrate this project into their
 own work for their own use cases, including commercial use, under the terms of the MIT license, as long
-as the credits in `LICENSE` are kept. If you adapt it to other cards or boards, please publish your
+as the copyright notice in `LICENSE` and the credits in it are kept. If you adapt it to other cards or boards, please publish your
 changes so others can benefit.
 
 *This project is not affiliated with or endorsed by NVIDIA, MSI or any of the credited authors.*
