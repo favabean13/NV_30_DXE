@@ -1,4 +1,4 @@
-# Ga102ReBarFix
+# Ga102ReBarFix AKA NV_30_DXE
 
 **Resizable BAR for the memory-modded RTX 3080 20GB on Windows, including sleep and resume.**
 
