@@ -148,6 +148,27 @@ powershell -ExecutionPolicy Bypass -File .\Test-HostVisibleVram.ps1 -HoldSeconds
 powershell -ExecutionPolicy Bypass -File .\Get-WakeDiagnostics.ps1 -Save
 ```
 
+### Why not just use `nvidia-smi`?
+
+`nvidia-smi -q` is fine for one thing: **BAR1 Memory Usage → Total** shows the aperture size, and
+it reads **32768 MiB** with this module. Beyond that, it can't confirm that ReBAR is working:
+
+- **"Used" is meaningless with a large BAR1.** On the tested system it reads about **32739 of 32768
+  MiB used** (29 MiB free) at an idle desktop, whatever the configuration. The driver reserves the
+  aperture's address range for its own bookkeeping. That doesn't mean 32 GB of anything is in use, and
+  it doesn't mean the BAR is full. noon-at-cgn's Linux project reports the same behaviour.
+- **"Total" only gives the window size.** It doesn't show whether the CPU can actually reach the VRAM
+  behind it. On Linux, the static BAR1 mode leaves only ~10 of 20 GB CPU-accessible, even with a large
+  BAR1. A healthy setup and a limited one can show the same `nvidia-smi` numbers.
+- **It doesn't show the firmware side or sleep/resume:** whether the `0x610` override was applied,
+  whether the resume steps were recorded, or why a wake failed.
+
+The scripts below measure those things directly:
+- `Read-Ga102Status.ps1` reports what the module did at boot.
+- `Test-HostVisibleVram.ps1` measures how much VRAM the CPU can really map at once. Task Manager
+  confirms that memory is in VRAM.
+- `Get-WakeDiagnostics.ps1` shows whether waking from sleep succeeded.
+
 ### 5.1 Quick checks (no scripts)
 
 - **Device Manager** → Display adapters → RTX 3080 → Properties → **Resources**. One memory range
