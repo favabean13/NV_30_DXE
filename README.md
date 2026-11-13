@@ -1,6 +1,6 @@
 # RTX 3080 20GB ReBarFix "AKA" NV_30_DXE
 
-**Resizable BAR for the memory-modified RTX 3080 20GB on Windows, including sleep and resume.**
+**Resizable BAR for the 20GB memory-modified RTX 3080's on Windows, Linux, FreeBSD, etc.**
 
 Confirmed, working with GPU_UNLOCKER: https://github.com/physicsdolphin/nv-uefi-unlocker
 
