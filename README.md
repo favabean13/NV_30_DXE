@@ -41,9 +41,9 @@ You don't need to modify the card's VBIOS, patch the NVIDIA driver, or change an
 
 **The problem.** 
 
-These modified RTX 3080 have 20 GB of VRAM, but its VBIOS only advertises a 256 MiB BAR1, the
-window the CPU uses to reach VRAM. NVIDIA doesn't publish a Resizable BAR VBIOS for these cards, and
-tools such as NvStrapsReBar only support Turing GPUs. This was a passion project created from necessity. 
+These modified RTX 3080's are shipped with an early engineering sample bios. They only advertise a 256 MiB BAR1, the
+window the CPU uses to reach VRAM. NVIDIA hasn't published a Resizable BAR VBIOS for these cards, and
+tools such as NvStrapsReBar only support Turing GPUs. This was a passion project created out of necessity and boredom. 
 
 **The key discovery.** 
 
