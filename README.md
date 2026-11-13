@@ -1,16 +1,16 @@
 # RTX 3080 20GB ReBarFix "AKA" NV_30_DXE
 
-**Resizable BAR for the memory-modded RTX 3080 20GB on Windows, including sleep and resume.**
+**Resizable BAR for the memory-modified RTX 3080 20GB on Windows, including sleep and resume.**
 
 Confirmed, working with GPU_UNLOCKER: https://github.com/physicsdolphin/nv-uefi-unlocker
 
-Ga102ReBarFix is a small UEFI firmware module (a DXE driver) that you insert into your motherboard's
+Ga102ReBarFix.ffs (NV_30_DXE) is a small UEFI firmware module (a DXE driver) that you insert into your motherboard's
 BIOS image. On every boot it unlocks the full 32 GiB BAR1 on the RTX 3080 20GB (PCI ID `10DE:2206`,
 subsystem `10DE:146D`). Windows and the NVIDIA driver then see Resizable BAR as active, and the CPU can
 reach all of the card's VRAM instead of a 256 MiB window. From v0.5 it also restores this after
 **S3 sleep**, so waking from sleep works.
 
-You don't need to modify the card's VBIOS, patch the NVIDIA driver, run Linux, or change the registry.
+You don't need to modify the card's VBIOS, patch the NVIDIA driver, or change any registry settings.
 
 > [!WARNING]
 > **Use at your own risk.** This project modifies motherboard firmware. The author is **not
@@ -37,17 +37,23 @@ You don't need to modify the card's VBIOS, patch the NVIDIA driver, run Linux, o
 
 ---
 
-## 1. The short version
+## 1. The short of it
 
-**The problem.** These modified RTX 3080 have 20 GB of VRAM, but its VBIOS only advertises a 256 MiB BAR1, the
+**The problem.** 
+
+These modified RTX 3080 have 20 GB of VRAM, but its VBIOS only advertises a 256 MiB BAR1, the
 window the CPU uses to reach VRAM. NVIDIA doesn't publish a Resizable BAR VBIOS for these cards, and
-tools such as NvStrapsReBar only support Turing GPUs, so Resizable BAR stays off.
+tools such as NvStrapsReBar only support Turing GPUs. This was a passion project created from necessity. 
 
-**The key discovery.** Ampere GA102 GPUs have a frame-buffer size override at PCI configuration
+**The key discovery.** 
+
+Ampere GA102 GPUs have a frame-buffer size override at PCI configuration
 register `0x610`. Writing the right bits there makes the card advertise BAR1 sizes up to 32 GiB. This
 was found and documented for Linux by **[noon-at-cgn](https://github.com/noon-at-cgn)**.
 
-**What this project adds.** A firmware module that does that write **during the motherboard's PCI
+**What this project adds.** 
+
+A firmware module that does that write **during the motherboard's PCI
 enumeration**, before Windows starts:
 
 1. Find the RTX 3080 20GB.
