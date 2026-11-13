@@ -111,6 +111,31 @@ current, working BIOS image.**
 **Don't combine it with NvStrapsReBar or ReBarUEFI's ReBarDxe** on the same card. Both would try to
 resize the same BAR, and whichever runs last wins. Remove the other module first.
 
+### Compatibility: flashing a modified BIOS on AMD Ryzen boards
+
+The module has only been tested on an Intel board (see [section 2](#2-tested-hardware-and-results)).
+On AMD Ryzen boards, **getting the modified BIOS onto the chip** can be the hard part, before the module
+itself ever runs.
+
+- **What it looks like:** reported on an MSI B850 (AM5) board: M-Flash refuses the image with
+  *"unable to start a secure flash session"*, and the Flash BIOS Button blinks a few times, then stays
+  solid instead of flashing.
+- **Why:** M-Flash checks the BIOS signature, and inserting a module breaks it, so M-Flash rejecting a
+  modified image is expected. In addition, ReBarUEFI's wiki notes that on Ryzen systems, BIOS versions
+  with **AGESA 1.2.0.0 or newer block modified BIOS flashing** (the `AmdSpiRomProtectDxe` module). Its
+  workaround is to downgrade to a BIOS with an older AGESA, flash the modified BIOS, then go back to the
+  latest AGESA:
+  [ReBarUEFI wiki: Can't flash modified BIOS on Ryzen system](https://github.com/xCuri0/ReBarUEFI/wiki/Flashing-modified-UEFI#cant-flash-modified-bios-on-ryzen-system).
+- **Not confirmed for AM5:** the wiki doesn't name AM5 or B850 specifically, and newer boards (such as
+  B850) may never have had a BIOS with an AGESA older than 1.2.0.0. Check your board's BIOS download page
+  for the AGESA version of each release.
+
+**Before concluding it's the AGESA block,** rule out the Flash BIOS Button setup: put the **unmodified**
+BIOS for your board on a FAT32 USB stick as `MSI.ROM` (watch for hidden extensions such as
+`MSI.ROM.ROM`), use the rear port labelled for BIOS flashing, and try again. If the stock image flashes
+but the modified one doesn't, the board is rejecting modified images. The remaining option is then an
+external SPI programmer, which is the riskiest route: back up the current chip contents first.
+
 ---
 
 ## 4. Installation
