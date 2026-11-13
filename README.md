@@ -22,7 +22,7 @@ You don't need to modify the card's VBIOS, patch the NVIDIA driver, or change an
 
 ## Contents
 
-1. [The short version](#1-the-short-version)
+1. [The short of it](#1-the-short-of-it)
 2. [Tested hardware and results](#2-tested-hardware-and-results)
 3. [Before you start](#3-before-you-start)
 4. [Installation](#4-installation)
