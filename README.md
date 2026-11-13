@@ -39,7 +39,7 @@ You don't need to modify the card's VBIOS, patch the NVIDIA driver, run Linux, o
 
 ## 1. The short version
 
-**The problem.** This RTX 3080 has 20 GB of VRAM, but its VBIOS only advertises a 256 MiB BAR1, the
+**The problem.** These modified RTX 3080 have 20 GB of VRAM, but its VBIOS only advertises a 256 MiB BAR1, the
 window the CPU uses to reach VRAM. NVIDIA doesn't publish a Resizable BAR VBIOS for these cards, and
 tools such as NvStrapsReBar only support Turing GPUs, so Resizable BAR stays off.
 
